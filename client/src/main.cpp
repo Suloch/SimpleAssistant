@@ -1,7 +1,12 @@
 #include<iostream>
 #include<portaudio.h>
 #include<vosk_api.h>
-
+#include<cstring>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <csignal>
 
 #define SAMPLE_RATE  (44100)
 #define FRAMES_PER_BUFFER (1024)
@@ -18,6 +23,42 @@ typedef struct {
     SAMPLE *samples;
 }VoiceData;
 
+class Connection{
+    public:
+        int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+        Connection(){
+            if (clientSocket < 0) {
+                std::cerr << "Error creating socket\n";
+            }
+
+            // Server address and port
+            sockaddr_in serverAddr;
+            serverAddr.sin_family = AF_INET;
+            serverAddr.sin_port = htons(8080); // Port the server is listening on
+            serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // IP address of the server
+
+            // Connect to server
+            if (connect(clientSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
+                std::cerr << "Connection failed\n";
+            }
+        }
+        
+        int sendData(const char* message){
+
+            // Send data
+            if (send(clientSocket, message, strlen(message), 0) < 0) {
+                std::cerr << "Error sending data\n";
+                return 1;
+            }
+            return 0;
+        }
+
+        ~Connection(){
+            close(clientSocket);
+        }
+};
+
+
 static int listenerCallback(
             const void* input_buffer, 
             void *output_buffer,
@@ -33,13 +74,19 @@ static int listenerCallback(
     if(final){
         const char *s = vosk_recognizer_result(data->recognizer);
         std::cout<<s<<std::endl;
+        if(strstr(s,"night") or strstr(s, "assistant")){
+            std::cout<<"HERE"<<std::endl;
+        }
     }
     return paContinue;
 }
 
+
+
 class NameListener{
 
     public:
+        VoiceData data;
         NameListener(VoskRecognizer * recognizer){
             this->initVoiceData(recognizer);
             this->initPortAudio();
@@ -54,7 +101,6 @@ class NameListener{
         PaStream *stream;
         PaError err;
         PaStreamParameters input_parameters;
-        VoiceData data;
 
         
         void initVoiceData(VoskRecognizer *recognizer){
@@ -97,20 +143,21 @@ class NameListener{
 };
 
 
+
 int main(int argc, char** argv){
-    const char *name = "night";
 
     VoskModel *model = vosk_model_new("../../models/model2");
     VoskRecognizer *recognizer= vosk_recognizer_new(model, SAMPLE_RATE);
-
-    NameListener app = NameListener(recognizer);
+    
+    NameListener *app = new NameListener(recognizer);
     
     std::cout<<"Press Enter to exit"<<std::endl;
-    getchar();
-
+    
+    delete app;
     vosk_recognizer_free(recognizer);
     vosk_model_free(model);
     return 0;
+
 }
 
 
