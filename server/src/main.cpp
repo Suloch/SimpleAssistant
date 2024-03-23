@@ -112,7 +112,11 @@ int main() {
 
     signal(SIGINT, terminationHandler);
     connection = new Connection();
-    connection->start();
+    while (true)
+    {
+        connection->start();
+    }
+    
 
     connection->stop();
     delete connection;
