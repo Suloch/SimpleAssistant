@@ -11,7 +11,7 @@ else ()
 endif ()
 
 # Add all source files to a variable
-set(SOURCES src/main.cpp)
+set(SOURCES src/main.cpp src/gcp/google_speech_2_text.cpp src/connection.cpp)
 
 
 
