@@ -48,85 +48,59 @@ typedef struct {
 const int BUFFER_SIZE = sizeof(DataFormat) + sizeof(char) *100 + SAMPLE_RATE * NUM_SECONDS * sizeof(SAMPLE);
 std::mutex data_buffer_mutex;
 
-using namespace google::cloud::speech::v1;
-class SpeechRecognitionStream{
-    
-    private:
-    
-    std::unique_ptr<RecognizeStream> stream;
-    bool running = false;
-
+class SpeechToTextStream{
     public:
 
-    void startStream(){
-        if(running){
-            std::cout<<"Stream Already running"<<std::endl;
-            return;
-        }
+    speech::SpeechClient client = speech::SpeechClient(speech::MakeSpeechConnection());
+    std::unique_ptr<RecognizeStream> stream;
 
-        auto client = speech::SpeechClient(speech::MakeSpeechConnection());
-
+    void start(){
         google::cloud::speech::v1::StreamingRecognizeRequest request;
         auto& streaming_config = *request.mutable_streaming_config();
-        streaming_config.mutable_config()->set_encoding(RecognitionConfig::LINEAR16);
+        streaming_config.mutable_config()->set_encoding(google::cloud::speech::v1::RecognitionConfig::LINEAR16);
         streaming_config.mutable_config()->set_sample_rate_hertz(44100);
         streaming_config.mutable_config()->set_language_code("en-IN");
-        streaming_config.mutable_config()->add_alternative_language_codes("hi");
-        
-
-        // *streaming_config.mutable_config() = args.config;
-
+        streaming_config.mutable_config()->set_audio_channel_count(1);
         stream = client.AsyncStreamingRecognize();
 
-        if (!stream->Start().get()){
-            std::cout<<"Unable to open the stream"<<std::endl;
-            stream->Finish();
-        } 
-
-        if (!stream->Write(request, grpc::WriteOptions{}).get()) {
-            std::cout<<"Stream is closed"<<std::endl;
-            stream->Finish();
+        if(!stream->Start().get()){
+            std::cout<<"Unable to create stream"<<std::endl;
         }
-
-        std::cout<<"Connected"<<std::endl;
-
+        if(!stream->Write(request, grpc::WriteOptions{}).get()){
+            std::cout<<"Unable to write config"<<std::endl;
+        }
     }
 
-    void finishStream(){
-        auto status = stream->Finish().get();
-         if (!status.ok()){
-            std::cout<<"Error while closing stream"<<std::endl;
-         }
+    void write(void *data, size_t n_bytes){
+        google::cloud::speech::v1::StreamingRecognizeRequest request;
+        request.set_audio_content(data, n_bytes);
+        if(!stream->Write(request, grpc::WriteOptions()).get()){
+            std::cout<<"Unable to write to stream"<<std::endl;
+        }else{
+            std::cout<<"Wrote to stream"<<std::endl;
+        }
+    }
 
-        // write the output
-        bool flag = false;
-        while(!flag){
-            std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-            std::cout<<"Sleeping for 2 seconds"<<std::endl;
-            for (auto response = stream->Read().get(); response.has_value(); response = stream->Read().get()) {
-
-                std::cout<<"Here"<<std::endl;
-                flag = true;
-
-                for (auto const& result : response->results()) {
-                    std::cout << "Result stability: " << result.stability() << "\n";
-                    for (auto const& alternative : result.alternatives()) {
-                        std::cout << alternative.confidence() << "\t"
-                                << alternative.transcript() << "\n";
-                    }
+    void finish(){
+        stream->WritesDone().get();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        auto read = [this] { return this->stream->Read().get(); };
+        for (auto response = read(); response.has_value(); response = read()) {
+            for (auto const& result : response->results()) {
+                std::cout << "Result stability: " << result.stability() << "\n";
+                for (auto const& alternative : result.alternatives()) {
+                    std::cout << alternative.confidence() << "\t"
+                            << alternative.transcript() << "\n";
                 }
             }
         }
-        std::cout<<"Finished"<<std::endl;
 
+        auto status = stream -> Finish().get();
+        if(!status.ok()) throw status;
     }
 
-    void transcribe(SAMPLE *data, size_t len){
-        google::cloud::speech::v1::StreamingRecognizeRequest request;
-        request.set_audio_content(data, len);
-        stream->Write(request, grpc::WriteOptions()).get();
-    }
 };
+
 
 
 class Connection{
@@ -207,10 +181,10 @@ class Connection{
         }
 
         void analyze_buffer(){
-           SpeechRecognitionStream stream;
+           SpeechToTextStream stream;
             while(run){
                 if(data_buffer.contains(0)){
-                    stream.startStream();
+                    stream.start();
                     int i = 0;
                     std::cout<<"Starting analysis"<<std::endl;
                     while(true){
@@ -221,11 +195,11 @@ class Connection{
                             continue;
                         }
                         // int final = vosk_recognizer_accept_waveform_s(recognizer, data_buffer[i].data, data_buffer[i].length);
-                        stream.transcribe(data_buffer[i].data, data_buffer[i].length);
+                        stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
 
                         if(data_buffer[i].option == DATA_STREAM_STOP){
                             // const char *s = vosk_recognizer_result(recognizer);
-                            stream.finishStream();
+                            stream.finish();
                             std::cout<<"Analysis complete"<<std::endl;
                             data_buffer.erase(i);
                             data_buffer_mutex.unlock();
