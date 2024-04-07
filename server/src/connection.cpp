@@ -16,6 +16,7 @@ Connection::Connection(){
 }
 
 DataFormat Connection::deserialize(char *buffer){
+    LOG.log(buffer);
     DataFormat data_recv;
     
     memcpy(&data_recv, buffer, sizeof(DataFormat));
@@ -176,7 +177,7 @@ std::vector<std::vector<char>> divideIntoChunks(const std::vector<char>& byteVec
 }
 
 std::string serialize_response_data(){
-    returbn "";
+    return "";
 }
 
 void Connection::send_response(std::string data){

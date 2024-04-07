@@ -79,13 +79,12 @@ class Connection{
         }
 
         std::vector<char> serialize(DataFormat data, size_t len){
-            std::vector<char> req_data(sizeof(len));
+            std::vector<char> req_data(len);
 
             memcpy(req_data.data(), &data, sizeof(DataFormat));
 
-            memcpy(req_data.data()+sizeof(DataFormat), data.data, data.length);
-
-            memcpy(req_data.data()+sizeof(DataFormat)+sizeof(SAMPLE)*data.message_length, data.message, data.message_length);
+            memcpy(req_data.data()+sizeof(DataFormat), data.data, data.length*sizeof(SAMPLE));
+            memcpy(req_data.data()+sizeof(DataFormat)+sizeof(SAMPLE)*data.length, data.message, data.message_length);
 
             return req_data;
         }
@@ -94,17 +93,19 @@ class Connection{
             SAMPLE sample_data[len];
             memcpy(sample_data, in, len);
 
-            char * message = "Sending voice data";
+            char message[] = "Sending voice data";
 
             DataFormat data{id, option, sample_data, message, len, strlen(message)};
 
             size_t data_len = sizeof(DataFormat) + sizeof(char) * strlen(message) + sizeof(SAMPLE) * len + 1;
 
-            std::vector req_data = serialize(data, data_len);
-            
+            std::vector<char> req_data = serialize(data, data_len);
+            Logger::getInstance().log(req_data.data(), ": ", req_data.size());
             if (send(this->clientSocket, req_data.data(), data_len, 0) < 0) {
                         std::cerr << "Error sending data\n";
             }
+
+            Logger::getInstance().log("Data send ", id);
         }
 
         void recieveData(){
@@ -147,7 +148,6 @@ static int listenerCallback(
     if(sending){
         //continue sending
         sent_frames += frames_per_buffer;
-        Logger::getInstance().log("Frames sent: ", sent_frames, " / ", frames_to_send);
 
         //check if this is the last frame
         if(sent_frames > frames_to_send){
