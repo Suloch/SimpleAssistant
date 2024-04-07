@@ -2,8 +2,10 @@
 #include<thread>
 #include <iostream>
 #include "google_speech_2_text.h"
+#include "google/cloud/texttospeech/v1/text_to_speech_client.h"
 #include <grpcpp/grpcpp.h>
 #include<chrono>
+#include "../logging/logger.h"
 
 namespace speech = ::google::cloud::speech_v1;
 using RecognizeStream = ::google::cloud::AsyncStreamingReadWriteRpc<
@@ -38,7 +40,7 @@ void SpeechToTextStream::write(void *data, size_t n_bytes){
     }
 }
 
-void SpeechToTextStream::finish(){
+std::string SpeechToTextStream::finish(){
     stream->WritesDone().get();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     auto read = [this] { return this->stream->Read().get(); };
@@ -46,12 +48,47 @@ void SpeechToTextStream::finish(){
         for (auto const& result : response->results()) {
             std::cout << "Result stability: " << result.stability() << "\n";
             for (auto const& alternative : result.alternatives()) {
-                std::cout << alternative.confidence() << "\t"
-                        << alternative.transcript() << "\n";
+                return alternative.transcript();
             }
         }
     }
 
     auto status = stream -> Finish().get();
     if(!status.ok()) throw status;
+
+    return "";
+}
+
+
+const std::string tts(const char *text, size_t length){
+    try{
+        
+        LOG.log("Starting TTS...");
+        namespace texttospeech = ::google::cloud::texttospeech_v1;
+        auto client = texttospeech::TextToSpeechClient(texttospeech::MakeTextToSpeechConnection());
+
+        LOG.log("Made Connection");
+        google::cloud::texttospeech::v1::SynthesisInput input;
+        input.set_ssml(text);
+
+        google::cloud::texttospeech::v1::VoiceSelectionParams voice;
+        voice.set_language_code("en-IN");
+        voice.set_name("");
+        
+        google::cloud::texttospeech::v1::AudioConfig audio;
+        audio.set_audio_encoding(google::cloud::texttospeech::v1::LINEAR16);
+
+
+        LOG.log("Starting request...");
+        auto response = client.SynthesizeSpeech(input, voice, audio);
+        
+        if (!response) throw std::move(response).status();
+        
+        return response->audio_content();
+    }catch (google::cloud::Status const& status) {
+        LOG.log("No response: ", status);
+        std::cerr << "google::cloud::Status thrown: " << status << "\n";
+        return "";
+    }
+
 }

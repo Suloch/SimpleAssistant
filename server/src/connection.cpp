@@ -6,7 +6,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <thread>
+
 #include "connection.h"
+#include "commands/command.h"
 #include "gcp/google_speech_2_text.h"
 
 Connection::Connection(){
@@ -33,56 +35,61 @@ void Connection::deleteData(DataFormat data){
 }
 
 int Connection::start(){
-    std::cout<<"Listening..."<<std::endl;
-    if (listen(serverSocket, 5) < 0) {
-        std::cerr << "Listening failed\n";
-        return 1;
-    }
-
-    sockaddr_in clientAddr;
-    socklen_t clientAddrSize = sizeof(clientAddr);
-    int clientSocket = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
-    if (clientSocket < 0) {
-        std::cerr << "Accepting connection failed\n";
-        return 1;
-    }
-    std::cout<<"ACCEPTED"<<std::endl;
-    char buffer[this->BUFFER_SIZE];
-    int bytesRead;
-
-    std::string last_message;
-    while ((bytesRead = recv(clientSocket, buffer, this->BUFFER_SIZE, 0)) > 0) {
-
-        DataFormat data = deserialize(buffer);
-        if(data.option != DATA_STREAM_CONTINUE){
-            std::cout<<"-----------------------------------------"<<std::endl;
-            std::cout<<"OPTION: "<<data.option<<std::endl;
-            std::cout<<"Data: ";
-            for(int i=0; i <10 && i < data.length; i++)
-                std::cout<<data.data[i];
-            std::cout<<std::endl;
-            std::cout<<"Message: "<<data.message<<std::endl;
-            std::cout<<std::endl;
-            std::cout<<std::endl;
-            std::cout<<"-----------------------------------------"<<std::endl;
+    while(run){
+        std::cout<<"Listening..."<<std::endl;
+        if (listen(serverSocket, 5) < 0) {
+            std::cerr << "Listening failed\n";
+            return 1;
         }
-        this->data_buffer_mutex.lock();
-        data_buffer[data.id] = data;
-        this->data_buffer_mutex.unlock();
 
-        send(clientSocket, "ACK0", 4, 0);
-    }
+        sockaddr_in clientAddr;
+        socklen_t clientAddrSize = sizeof(clientAddr);
+        int clientSocket = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
+        if (clientSocket < 0) {
+            std::cerr << "Accepting connection failed\n";
+            return 1;
+        }
+        std::cout<<"ACCEPTED"<<std::endl;
+        char buffer[this->BUFFER_SIZE];
+        int bytesRead;
 
-    if (bytesRead < 0) {
-        std::cerr << "Error reading from socket\n";
+        std::string last_message;
+        while ((bytesRead = recv(clientSocket, buffer, this->BUFFER_SIZE, 0)) > 0) {
+
+            DataFormat data = deserialize(buffer);
+            if(data.option != DATA_STREAM_CONTINUE){
+                std::cout<<"-----------------------------------------"<<std::endl;
+                std::cout<<"OPTION: "<<data.option<<std::endl;
+                std::cout<<"Data: ";
+                for(int i=0; i <10 && i < data.length; i++)
+                    std::cout<<data.data[i];
+                std::cout<<std::endl;
+                std::cout<<"Message: "<<data.message<<std::endl;
+                std::cout<<std::endl;
+                std::cout<<std::endl;
+                std::cout<<"-----------------------------------------"<<std::endl;
+            }
+            this->data_buffer_mutex.lock();
+            data_buffer[data.id] = data;
+            this->data_buffer_mutex.unlock();
+
+            send(clientSocket, "ACK0", 4, 0);
+        }
+
+        if (bytesRead < 0) {
+            std::cerr << "Error reading from socket\n";
+        }
+        close(clientSocket);
     }
-    close(clientSocket);
 
     return 0;
 }
 
+
 void Connection::analyze_buffer(){
     SpeechToTextStream stream;
+    CommandContext c("auth/night.json");
+
     while(run){
         if(data_buffer.contains(0)){
             stream.start();
@@ -98,7 +105,7 @@ void Connection::analyze_buffer(){
                 stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
 
                 if(data_buffer[i].option == DATA_STREAM_STOP){
-                    stream.finish();
+                    c.run(stream.finish());
                     std::cout<<"Analysis complete"<<std::endl;
                     data_buffer.erase(i);
                     data_buffer_mutex.unlock();

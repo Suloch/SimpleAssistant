@@ -2,3 +2,4 @@
 models/
 auth
 .build
+log.txt

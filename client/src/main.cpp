@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <csignal>
 #include <stdexcept>
+#include <thread>
 
 #define SAMPLE_RATE  (44100)
 #define FRAMES_PER_BUFFER (1024)
@@ -25,45 +26,74 @@ typedef struct {
     void *connection;
 }VoiceData;
 
-void sendData(const char *message){
-    int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (clientSocket < 0) {
-        return;
-    }
 
-    // Server address and port
-    sockaddr_in serverAddr;
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(8080); // Port the server is listening on
-    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // IP address of the server
+typedef enum{
+    ACK_0, // acknowledgements
+    ACK_1, 
+    PLAYER_STREAM
+}ResponseType;
 
-    // Connect to server
-    if (connect(clientSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
-        return;
-    }
+typedef struct {
+    ResponseType type;
+    size_t length;
+    void *data;
+} ResponseData;
 
-    if (send(clientSocket, message, strlen(message), 0) < 0) {
-                std::cerr << "Error sending data\n";
-            }
 
-    close(clientSocket);
-    
-}
+
+
+
 
 class Connection{
     public:
-        bool active = false;
-        Connection(){}
-        Connection(const char* message){
-            
+        bool active = true;
+        int clientSocket;
+        
+        Connection(){
+            int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+            if (clientSocket < 0) {
+        return;
+    }
 
-            
+            // Server address and port
+            sockaddr_in serverAddr;
+            serverAddr.sin_family = AF_INET;
+            serverAddr.sin_port = htons(8080); // Port the server is listening on
+            serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // IP address of the server
+
+            // Connect to server
+            if (connect(clientSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
+                return;
+            }
+
+
+
+        }
+        void sendData(const char *message){
+    
+            if (send(clientSocket, message, strlen(message), 0) < 0) {
+                        std::cerr << "Error sending data\n";
+            }
+        }
+
+        void recieveData(){
+            char message[65*1024];
+            while(active){
+                if(recv(clientSocket, message, 65*1024, 0)){
+                    std::cout<<message<<std::endl;
+                    // if it is player data deserialize the data
+                }
+            }
         }
 
         ~Connection(){
+            close(clientSocket);
         }
 };
 
+Connection C;
+
+std::thread listener_thread(&Connection::recieveData, C);
 
 static int listenerCallback(
             const void* input_buffer, 
@@ -80,7 +110,7 @@ static int listenerCallback(
     if(final){
         const char *s = vosk_recognizer_result(data->recognizer);
         std::cout<<s<<std::endl;
-        sendData(s);
+        C.sendData(s);
         if(strstr(s,"night") or strstr(s, "assistant")){
             std::cout<<"HERE"<<std::endl;
         }
@@ -161,6 +191,7 @@ int main(int argc, char** argv){
     
     std::cout<<"Press Enter to exit"<<std::endl;
     getchar();
+    C.active = false;
     delete app;
     vosk_recognizer_free(recognizer);
     vosk_model_free(model);

@@ -17,6 +17,8 @@ class SpeechToTextStream{
 
         void write(void *data, size_t n_bytes);
 
-        void finish();
+        std::string finish();
 
 };
+
+const std::string tts(const char *text, size_t length);

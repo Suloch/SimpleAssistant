@@ -26,6 +26,18 @@ typedef struct {
 #define SAMPLE_RATE  (44100)
 #define NUM_SECONDS (5)
 
+typedef enum{
+    ACK_0, // acknowledgements
+    ACK_1, 
+    PLAYER_STREAM
+}ResponseType;
+
+typedef struct {
+    ResponseType type;
+    size_t length;
+    void *data;
+} ResponseData;
+
 
 
 class Connection{
@@ -40,6 +52,7 @@ class Connection{
         void analyze_buffer();
         bool run;
         int stop();
+        void send_response();
 
     private:
         const int BUFFER_SIZE = sizeof(DataFormat) + sizeof(char) *100 + SAMPLE_RATE * NUM_SECONDS * sizeof(SAMPLE);
