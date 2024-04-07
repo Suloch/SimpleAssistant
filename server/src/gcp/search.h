@@ -71,33 +71,27 @@ class GeminiSearch{
             }
         };
 
-        LOG.log(this->post_data);
 
     }
 
 
     std::string ask(std::string query){
-        LOG.log("startin the query: ", query);
         std::string final_prompt =  persona_text + query;
 
-        LOG.log(this->post_data);
         this->post_data["contents"] = json::array();
 
         for(auto &elem : history){
             this->post_data["contents"].push_back({{"role", elem.user_type}, {"parts", {{"text", elem.message}}}});
         }
 
-        LOG.log("Read the history");
 
         convo new_convo{"user", final_prompt};
         this->history.push_back(new_convo);
 
         this->post_data["contents"].push_back({{"role", new_convo.user_type}, {"parts", {{"text", new_convo.message}}}});
-        LOG.log("Appended the query to history");
 
         std::string post_data_text = this->post_data.dump();
 
-        LOG.log("Posting data: ", post_data_text);
 
         try {
             curlpp::Cleanup cleaner;

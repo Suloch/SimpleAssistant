@@ -13,7 +13,8 @@ else ()
 endif ()
 
 # Add all source files to a variable
-set(SOURCES test/test_tts.cpp src/gcp/google_speech_2_text.cpp src/connection.cpp)
+set(SOURCES src/main.cpp src/gcp/google_speech_2_text.cpp src/connection.cpp)
+# set(SOURCES test/test_tts.cpp src/gcp/google_speech_2_text.cpp src/connection.cpp)
 
 
 

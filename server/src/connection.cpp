@@ -44,7 +44,7 @@ int Connection::start(){
 
         sockaddr_in clientAddr;
         socklen_t clientAddrSize = sizeof(clientAddr);
-        int clientSocket = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
+        clientSocket = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), &clientAddrSize);
         if (clientSocket < 0) {
             std::cerr << "Accepting connection failed\n";
             return 1;
@@ -105,7 +105,8 @@ void Connection::analyze_buffer(){
                 stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
 
                 if(data_buffer[i].option == DATA_STREAM_STOP){
-                    c.run(stream.finish());
+                    this->send_response(c.run(stream.finish())) ;
+                    
                     std::cout<<"Analysis complete"<<std::endl;
                     data_buffer.erase(i);
                     data_buffer_mutex.unlock();
@@ -154,5 +155,44 @@ int Connection::initConnection(){
     }
     return 0;
 
+}
+
+std::vector<std::vector<char>> divideIntoChunks(const std::vector<char>& byteVector, size_t chunkSize) {
+    std::vector<std::vector<char>> chunks;
+    size_t numChunks = byteVector.size() / chunkSize;
+    size_t remainder = byteVector.size() % chunkSize;
+
+    // Iterate through the vector and split it into chunks
+    for (size_t i = 0; i < numChunks; ++i) {
+        chunks.push_back(std::vector<char>(byteVector.begin() + i * chunkSize, byteVector.begin() + (i + 1) * chunkSize));
+    }
+
+    // If there's a remainder, add one more chunk
+    if (remainder > 0) {
+        chunks.push_back(std::vector<char>(byteVector.end() - remainder, byteVector.end()));
+    }
+
+    return chunks;
+}
+
+std::string serialize_response_data(){
+    
+}
+
+void Connection::send_response(std::string data){
+    std::vector<char> bytes(data.at(44), myString.end()); //skip the wav header
+
+
+    // send data in chunks of 64KB
+    size_t chunkSize = 64 * 1024;
+    std::vector<std::vector<char>> chunks = divideIntoChunks(bytes, chunkSize);
+
+    for(auto &chunk: chunks){
+        ResponseData r_data{PLAYER_STREAM, chunk.size(), chunk.data()};
+
+        if (send(clientSocket, message, strlen(message), 0) < 0) {
+                    std::cerr << "Error sending data\n";
+        }
+    }
 }
 

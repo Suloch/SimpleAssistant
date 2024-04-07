@@ -9,6 +9,8 @@
 #include <csignal>
 #include <stdexcept>
 #include <thread>
+#include <vector>
+#include "logger.h"
 
 #define SAMPLE_RATE  (44100)
 #define FRAMES_PER_BUFFER (1024)
@@ -17,15 +19,21 @@
 
 typedef short SAMPLE;
 
-typedef struct {
-    unsigned int frame_index;
-    unsigned int max_frame_index;
-    bool is_recording;
-    VoskRecognizer *recognizer;
-    SAMPLE *samples;
-    void *connection;
-}VoiceData;
+typedef enum{
+    DATA_STREAM_START,
+    DATA_STREAM_STOP,
+    DATA_STREAM_CONTINUE,
+}SEND_OPTION;
 
+
+typedef struct {
+    size_t id;
+    SEND_OPTION option;
+    SAMPLE *data;
+    char * message;
+    size_t length;
+    size_t message_length;
+}DataFormat;
 
 typedef enum{
     ACK_0, // acknowledgements
@@ -50,8 +58,8 @@ class Connection{
         int clientSocket;
         
         Connection(){
-            int clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-            if (clientSocket < 0) {
+            this->clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+            if (this->clientSocket < 0) {
         return;
     }
 
@@ -62,16 +70,39 @@ class Connection{
             serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1"); // IP address of the server
 
             // Connect to server
-            if (connect(clientSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
+            if (connect(this->clientSocket, reinterpret_cast<sockaddr*>(&serverAddr), sizeof(serverAddr)) < 0) {
                 return;
             }
 
 
 
         }
-        void sendData(const char *message){
-    
-            if (send(clientSocket, message, strlen(message), 0) < 0) {
+
+        std::vector<char> serialize(DataFormat data, size_t len){
+            std::vector<char> req_data(sizeof(len));
+
+            memcpy(req_data.data(), &data, sizeof(DataFormat));
+
+            memcpy(req_data.data()+sizeof(DataFormat), data.data, data.length);
+
+            memcpy(req_data.data()+sizeof(DataFormat)+sizeof(SAMPLE)*data.message_length, data.message, data.message_length);
+
+            return req_data;
+        }
+
+        void sendData(const SAMPLE *in, size_t len, size_t id, SEND_OPTION option){
+            SAMPLE sample_data[len];
+            memcpy(sample_data, in, len);
+
+            char * message = "Sending voice data";
+
+            DataFormat data{id, option, sample_data, message, len, strlen(message)};
+
+            size_t data_len = sizeof(DataFormat) + sizeof(char) * strlen(message) + sizeof(SAMPLE) * len + 1;
+
+            std::vector req_data = serialize(data, data_len);
+            
+            if (send(this->clientSocket, req_data.data(), data_len, 0) < 0) {
                         std::cerr << "Error sending data\n";
             }
         }
@@ -92,8 +123,9 @@ class Connection{
 };
 
 Connection C;
+const unsigned long frames_to_send = NUM_SECONDS * FRAMES_PER_BUFFER;
 
-std::thread listener_thread(&Connection::recieveData, C);
+// std::thread listener_thread(&Connection::recieveData, C);
 
 static int listenerCallback(
             const void* input_buffer, 
@@ -103,18 +135,47 @@ static int listenerCallback(
             PaStreamCallbackFlags status_flags,
             void *user_data
             ){
-    VoiceData *data = (VoiceData *)user_data;
+    VoskRecognizer *recognizer = (VoskRecognizer *)user_data;
     const SAMPLE * in = (const SAMPLE *)input_buffer;
 
-    int final = vosk_recognizer_accept_waveform_s(data->recognizer, in, frames_per_buffer);
+    static bool sending = false;
+    static size_t id = 0;
+    static size_t sent_frames = 0;
+
+
+    //if sending data skip recognition
+    if(sending){
+        //continue sending
+        sent_frames += frames_per_buffer;
+
+        //check if this is the last frame
+        if(sent_frames > frames_to_send){
+            sending = false;
+            C.sendData(in, frames_per_buffer, id, DATA_STREAM_STOP);
+            id = 0;
+            return paContinue;
+            Logger::getInstance().log("Stop sending data");
+
+        }
+        C.sendData(in, frames_per_buffer, id, DATA_STREAM_CONTINUE);
+        id++;
+        return paContinue;
+    }
+
+    int final = vosk_recognizer_accept_waveform_s(recognizer, in, frames_per_buffer);
     if(final){
-        const char *s = vosk_recognizer_result(data->recognizer);
+        const char *s = vosk_recognizer_result(recognizer);
         std::cout<<s<<std::endl;
-        C.sendData(s);
         if(strstr(s,"night") or strstr(s, "assistant")){
-            std::cout<<"HERE"<<std::endl;
+            //start sending data
+            Logger::getInstance().log("Start sending data");
+
+            sending = true;
+            C.sendData(in, frames_per_buffer, id, DATA_STREAM_START);
+            id++;
         }
     }
+
     return paContinue;
 }
 
@@ -123,9 +184,9 @@ static int listenerCallback(
 class NameListener{
 
     public:
-        VoiceData data;
+        VoskRecognizer * recognizer;
         NameListener(VoskRecognizer * recognizer){
-            this->initVoiceData(recognizer);
+            this->recognizer = recognizer;
             this->initPortAudio();
         }
 
@@ -138,16 +199,6 @@ class NameListener{
         PaStream *stream;
         PaError err;
         PaStreamParameters input_parameters;
-
-        
-        void initVoiceData(VoskRecognizer *recognizer){
-            data.max_frame_index = NUM_SECONDS * SAMPLE_RATE;
-            data.frame_index = 0;
-            data.samples = (SAMPLE *) malloc( data.max_frame_index * sizeof(SAMPLE) );
-            data.is_recording = false;
-            data.recognizer = recognizer;
-            data.connection = new Connection();
-        }
 
         void initPortAudio(){
             err = Pa_Initialize();
@@ -166,7 +217,7 @@ class NameListener{
                         FRAMES_PER_BUFFER,
                         paClipOff, // Turn off clipping
                         listenerCallback,
-                        &data);
+                        recognizer);
             if (err != paNoError) showError("Error while opening stream");
 
             err = Pa_StartStream(stream);
@@ -183,11 +234,14 @@ class NameListener{
 
 
 int main(int argc, char** argv){
-
+    Logger::getInstance().start(debug, "log.txt");
     VoskModel *model = vosk_model_new("../../models/model2");
     VoskRecognizer *recognizer= vosk_recognizer_new(model, SAMPLE_RATE);
+
+    Logger::getInstance().log("Vosk initialized");
     
     NameListener *app = new NameListener(recognizer);
+    Logger::getInstance().log("Listenre initialzied");
     
     std::cout<<"Press Enter to exit"<<std::endl;
     getchar();
@@ -195,6 +249,7 @@ int main(int argc, char** argv){
     delete app;
     vosk_recognizer_free(recognizer);
     vosk_model_free(model);
+    Logger::getInstance().stop();
 
     return 0;
 

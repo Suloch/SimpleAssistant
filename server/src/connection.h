@@ -45,6 +45,7 @@ class Connection{
         std::mutex data_buffer_mutex;
         std::map<int, DataFormat> data_buffer;
         DataFormat deserialize(char *buffer);
+        int clientSocket;
 
         Connection();
         void deleteData(DataFormat data);
@@ -52,7 +53,7 @@ class Connection{
         void analyze_buffer();
         bool run;
         int stop();
-        void send_response();
+        void send_response(std::string data);
 
     private:
         const int BUFFER_SIZE = sizeof(DataFormat) + sizeof(char) *100 + SAMPLE_RATE * NUM_SECONDS * sizeof(SAMPLE);

@@ -31,7 +31,7 @@ int main() {
     connection->run = true;
 
     std::thread t1(&Connection::start, connection);
-    std::thread t2(&Connection::start, connection);
+    // std::thread t2(&Connection::start, connection);
     std::thread t3(&Connection::analyze_buffer, connection);
     
     getchar();
@@ -39,7 +39,7 @@ int main() {
     connection->run = false;
     
     t1.join();
-    t2.join();
+    // t2.join();
     
     t3.join();
 

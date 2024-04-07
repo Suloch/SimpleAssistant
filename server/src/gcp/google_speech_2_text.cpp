@@ -78,7 +78,7 @@ const std::string tts(const char *text, size_t length){
         google::cloud::texttospeech::v1::AudioConfig audio;
         audio.set_audio_encoding(google::cloud::texttospeech::v1::LINEAR16);
 
-
+        audio.set_sample_rate_hertz(44100);
         LOG.log("Starting request...");
         auto response = client.SynthesizeSpeech(input, voice, audio);
         
