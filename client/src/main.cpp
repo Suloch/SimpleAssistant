@@ -123,7 +123,7 @@ class Connection{
 };
 
 Connection C;
-const unsigned long frames_to_send = NUM_SECONDS * FRAMES_PER_BUFFER;
+const unsigned long frames_to_send = NUM_SECONDS * SAMPLE_RATE;
 
 // std::thread listener_thread(&Connection::recieveData, C);
 
@@ -147,6 +147,7 @@ static int listenerCallback(
     if(sending){
         //continue sending
         sent_frames += frames_per_buffer;
+        Logger::getInstance().log("Frames sent: ", sent_frames, " / ", frames_to_send);
 
         //check if this is the last frame
         if(sent_frames > frames_to_send){

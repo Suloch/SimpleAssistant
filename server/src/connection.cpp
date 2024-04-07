@@ -87,39 +87,39 @@ int Connection::start(){
 
 
 void Connection::analyze_buffer(){
-    SpeechToTextStream stream;
-    CommandContext c("auth/night.json");
+    // SpeechToTextStream stream;
+    // CommandContext c("auth/night.json");
 
-    while(run){
-        if(data_buffer.contains(0)){
-            stream.start();
-            int i = 0;
-            std::cout<<"Starting analysis"<<std::endl;
-            while(true){
-                data_buffer_mutex.lock();
-                if(!data_buffer.contains(i)){
-                    data_buffer_mutex.unlock();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    continue;
-                }
-                stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
+    // while(run){
+    //     if(data_buffer.contains(0)){
+    //         stream.start();
+    //         int i = 0;
+    //         std::cout<<"Starting analysis"<<std::endl;
+    //         while(true){
+    //             data_buffer_mutex.lock();
+    //             if(!data_buffer.contains(i)){
+    //                 data_buffer_mutex.unlock();
+    //                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    //                 continue;
+    //             }
+    //             stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
 
-                if(data_buffer[i].option == DATA_STREAM_STOP){
-                    this->send_response(c.run(stream.finish())) ;
+    //             if(data_buffer[i].option == DATA_STREAM_STOP){
+    //                 this->send_response(c.run(stream.finish())) ;
                     
-                    std::cout<<"Analysis complete"<<std::endl;
-                    data_buffer.erase(i);
-                    data_buffer_mutex.unlock();
+    //                 std::cout<<"Analysis complete"<<std::endl;
+    //                 data_buffer.erase(i);
+    //                 data_buffer_mutex.unlock();
                     
-                    break;
-                }
-                data_buffer.erase(i);
-                data_buffer_mutex.unlock();
-                i++;
-            }
+    //                 break;
+    //             }
+    //             data_buffer.erase(i);
+    //             data_buffer_mutex.unlock();
+    //             i++;
+    //         }
 
-        }
-    }
+    //     }
+    // }
 }
 
 int Connection::stop(){
@@ -176,23 +176,23 @@ std::vector<std::vector<char>> divideIntoChunks(const std::vector<char>& byteVec
 }
 
 std::string serialize_response_data(){
-    
+    returbn "";
 }
 
 void Connection::send_response(std::string data){
-    std::vector<char> bytes(data.at(44), myString.end()); //skip the wav header
+    // std::vector<char> bytes(data.at(44), data.end()); //skip the wav header
 
 
     // send data in chunks of 64KB
-    size_t chunkSize = 64 * 1024;
-    std::vector<std::vector<char>> chunks = divideIntoChunks(bytes, chunkSize);
+    // size_t chunkSize = 64 * 1024;
+    // std::vector<std::vector<char>> chunks = divideIntoChunks(bytes, chunkSize);
 
-    for(auto &chunk: chunks){
-        ResponseData r_data{PLAYER_STREAM, chunk.size(), chunk.data()};
+    // for(auto &chunk: chunks){
+    //     ResponseData r_data{PLAYER_STREAM, chunk.size(), chunk.data()};
 
-        if (send(clientSocket, message, strlen(message), 0) < 0) {
-                    std::cerr << "Error sending data\n";
-        }
-    }
+    //     if (send(clientSocket, message, strlen(message), 0) < 0) {
+    //                 std::cerr << "Error sending data\n";
+    //     }
+    // }
 }
 
