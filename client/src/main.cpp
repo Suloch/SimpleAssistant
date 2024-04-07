@@ -38,7 +38,8 @@ typedef struct {
 typedef enum{
     ACK_0, // acknowledgements
     ACK_1, 
-    PLAYER_STREAM
+    PLAYER_STREAM,
+    REPLY
 }ResponseType;
 
 typedef struct {
@@ -47,8 +48,147 @@ typedef struct {
     void *data;
 } ResponseData;
 
+class AudioPlayer{
+    public:
+        std::vector<ResponseData> buffer;
+        PaStream*           stream;
+        PaError             err = paNoError;
+
+        AudioPlayer(){
+            
+            this->start();
+            
+        }
+        void start();
+        void add_buffer(ResponseData data){
+            buffer.push_back(data);
+        }
+
+        void remove_buffer(){
+            //pop the data
+            //delete the data.data
+        }
+
+        ~AudioPlayer(){
+            err = Pa_CloseStream( stream );
+            if( err != paNoError ){
+                Logger::getInstance().log("Stream is not closed");
+                return;
+            }
+        }
 
 
+};
+static int playCallback( const void *inputBuffer, void *outputBuffer,
+                            unsigned long framesPerBuffer,
+                            const PaStreamCallbackTimeInfo* timeInfo,
+                            PaStreamCallbackFlags statusFlags,
+                            void *userData )
+{
+    AudioPlayer *data = (AudioPlayer*)userData;
+    SAMPLE *rptr = (SAMPLE *)data->buffer[0].data;
+    SAMPLE *wptr = (SAMPLE*)outputBuffer;
+    unsigned int i;
+    int finished;
+    static size_t frame = 0;
+    unsigned int framesLeft = data->buffer[0].length;
+
+    (void) inputBuffer; /* Prevent unused variable warnings. */
+    (void) timeInfo;
+    (void) statusFlags;
+    (void) userData;
+
+    if( framesLeft < framesPerBuffer )
+    {
+        
+        /* final buffer... */
+        for( i=0; i<framesLeft; i++ )
+        {
+            *wptr++ = *rptr++; 
+        }
+        // delete the first one buffer
+        data->remove_buffer();
+        // update the rptr
+        if(data->buffer.size() > 0){
+            rptr = (SAMPLE *)data->buffer[0].data;
+            /* final buffer... */
+            for( ; i<framesLeft; i++ )
+            {
+                *wptr++ = *rptr++; 
+            }
+            data->buffer[0].length -= framesLeft;
+            return paContinue;
+        }else{
+        for( ; i<framesPerBuffer; i++ )
+        {
+            *wptr++ = 0;  /* left */
+        }
+        }
+        data->buffer[0].length -= framesPerBuffer;
+        finished = paComplete;
+    }
+    else
+    {
+        for( i=0; i<framesPerBuffer; i++ )
+        {
+            *wptr++ = *rptr++;  /* left */
+        }
+        data->buffer[0].length -= framesPerBuffer;
+        finished = paContinue;
+    }
+    return finished;
+}
+
+void AudioPlayer::start(){
+    PaStreamParameters outputParameters;
+
+            outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
+            if (outputParameters.device == paNoDevice) {
+                Logger::getInstance().log("Unable to get device");
+                return;
+            }
+            outputParameters.channelCount = 1;                     /* stereo output */
+            outputParameters.sampleFormat =  paInt16;
+            outputParameters.suggestedLatency = Pa_GetDeviceInfo( outputParameters.device )->defaultLowOutputLatency;
+            outputParameters.hostApiSpecificStreamInfo = NULL;
+    err = Pa_OpenStream(
+                        &stream,
+                        NULL, /* no input */
+                        &outputParameters,
+                        SAMPLE_RATE,
+                        FRAMES_PER_BUFFER,
+                        paClipOff,      /* we won't output out of range samples so don't bother clipping them */
+                        playCallback,
+                        this );
+            if( err != paNoError ){
+                Logger::getInstance().log("Unable to get device");
+                return;
+            }
+        
+            if( stream )
+            {
+                err = Pa_StartStream( stream );
+                if( err != paNoError ){
+                    Logger::getInstance().log("Unable to start stream");
+                    return;
+                }
+                
+        
+                while( ( err = Pa_IsStreamActive( stream ) ) == 1 ) Pa_Sleep(100);
+                if( err != paNoError ){
+                    Logger::getInstance().log("Stream is not active");
+                    return;
+                }
+                
+                
+                
+                printf("Done.\n"); fflush(stdout);
+            }
+}
+
+
+
+AudioPlayer replier;
 
 
 
@@ -100,12 +240,21 @@ class Connection{
             size_t data_len = sizeof(DataFormat) + sizeof(char) * strlen(message) + sizeof(SAMPLE) * len + 1;
 
             std::vector<char> req_data = serialize(data, data_len);
-            Logger::getInstance().log(req_data.data(), ": ", req_data.size());
             if (send(this->clientSocket, req_data.data(), data_len, 0) < 0) {
                         std::cerr << "Error sending data\n";
             }
 
-            Logger::getInstance().log("Data send ", id);
+        }
+        ResponseData deserialize_response(char *buffer){
+            ResponseData data;
+            memcpy(&data, buffer, sizeof(ResponseData));
+            if(data.type == REPLY){
+                data.data = new SAMPLE[data.length];
+                memcpy(data.data, buffer + sizeof(ResponseData), sizeof(SAMPLE) * data.length); 
+                replier.add_buffer(data);
+            }
+
+            return data;
         }
 
         void recieveData(){
@@ -113,7 +262,7 @@ class Connection{
             while(active){
                 if(recv(clientSocket, message, 65*1024, 0)){
                     std::cout<<message<<std::endl;
-                    // if it is player data deserialize the data
+                    ResponseData data = deserialize_response(message);
                 }
             }
         }
@@ -155,7 +304,6 @@ static int listenerCallback(
             C.sendData(in, frames_per_buffer, id, DATA_STREAM_STOP);
             id = 0;
             return paContinue;
-            Logger::getInstance().log("Stop sending data");
 
         }
         C.sendData(in, frames_per_buffer, id, DATA_STREAM_CONTINUE);
@@ -169,7 +317,6 @@ static int listenerCallback(
         std::cout<<s<<std::endl;
         if(strstr(s,"night") or strstr(s, "assistant")){
             //start sending data
-            Logger::getInstance().log("Start sending data");
 
             sending = true;
             C.sendData(in, frames_per_buffer, id, DATA_STREAM_START);

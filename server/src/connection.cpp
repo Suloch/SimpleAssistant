@@ -16,7 +16,6 @@ Connection::Connection(){
 }
 
 DataFormat Connection::deserialize(char *buffer){
-    LOG.log(buffer);
     DataFormat data_recv;
     
     memcpy(&data_recv, buffer, sizeof(DataFormat));
@@ -88,39 +87,39 @@ int Connection::start(){
 
 
 void Connection::analyze_buffer(){
-    // SpeechToTextStream stream;
-    // CommandContext c("auth/night.json");
+    SpeechToTextStream stream;
+    CommandContext c("auth/night.json");
 
-    // while(run){
-    //     if(data_buffer.contains(0)){
-    //         stream.start();
-    //         int i = 0;
-    //         std::cout<<"Starting analysis"<<std::endl;
-    //         while(true){
-    //             data_buffer_mutex.lock();
-    //             if(!data_buffer.contains(i)){
-    //                 data_buffer_mutex.unlock();
-    //                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    //                 continue;
-    //             }
-    //             stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
+    while(run){
+        if(data_buffer.contains(0)){
+            stream.start();
+            int i = 0;
+            std::cout<<"Starting analysis"<<std::endl;
+            while(true){
+                data_buffer_mutex.lock();
+                if(!data_buffer.contains(i)){
+                    data_buffer_mutex.unlock();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    continue;
+                }
+                stream.write(data_buffer[i].data, data_buffer[i].length*sizeof(SAMPLE));
 
-    //             if(data_buffer[i].option == DATA_STREAM_STOP){
-    //                 this->send_response(c.run(stream.finish())) ;
+                if(data_buffer[i].option == DATA_STREAM_STOP){
+                    this->send_response(c.run(stream.finish())) ;
                     
-    //                 std::cout<<"Analysis complete"<<std::endl;
-    //                 data_buffer.erase(i);
-    //                 data_buffer_mutex.unlock();
+                    std::cout<<"Analysis complete"<<std::endl;
+                    data_buffer.erase(i);
+                    data_buffer_mutex.unlock();
                     
-    //                 break;
-    //             }
-    //             data_buffer.erase(i);
-    //             data_buffer_mutex.unlock();
-    //             i++;
-    //         }
+                    break;
+                }
+                data_buffer.erase(i);
+                data_buffer_mutex.unlock();
+                i++;
+            }
 
-    //     }
-    // }
+        }
+    }
 }
 
 int Connection::stop(){
@@ -158,27 +157,31 @@ int Connection::initConnection(){
 
 }
 
-std::vector<std::vector<char>> divideIntoChunks(const std::vector<char>& byteVector, size_t chunkSize) {
-    std::vector<std::vector<char>> chunks;
-    size_t numChunks = byteVector.size() / chunkSize;
-    size_t remainder = byteVector.size() % chunkSize;
+// std::vector<std::vector<char>> divideIntoChunks(const std::vector<char>& byteVector, size_t chunkSize) {
+//     std::vector<std::vector<char>> chunks;
+//     size_t numChunks = byteVector.size() / chunkSize;
+//     size_t remainder = byteVector.size() % chunkSize;
 
-    // Iterate through the vector and split it into chunks
-    for (size_t i = 0; i < numChunks; ++i) {
-        chunks.push_back(std::vector<char>(byteVector.begin() + i * chunkSize, byteVector.begin() + (i + 1) * chunkSize));
-    }
+//     // Iterate through the vector and split it into chunks
+//     for (size_t i = 0; i < numChunks; ++i) {
+//         chunks.push_back(std::vector<char>(byteVector.begin() + i * chunkSize, byteVector.begin() + (i + 1) * chunkSize));
+//     }
 
-    // If there's a remainder, add one more chunk
-    if (remainder > 0) {
-        chunks.push_back(std::vector<char>(byteVector.end() - remainder, byteVector.end()));
-    }
+//     // If there's a remainder, add one more chunk
+//     if (remainder > 0) {
+//         chunks.push_back(std::vector<char>(byteVector.end() - remainder, byteVector.end()));
+//     }
 
-    return chunks;
-}
+//     return chunks;
+// }
 
-std::string serialize_response_data(){
-    return "";
-}
+// std::vector<char> serialize_response_data(ResponseData data, size_t len){
+//     std::vector<char> response_data(len);
+
+//     memcpy(response_data.data(), &data, sizeof(ResponseData));
+//     memcpy(response_data.data()+sizeof(ResponseData), data.data, data.length) ;
+//     return response_data;
+// }
 
 void Connection::send_response(std::string data){
     // std::vector<char> bytes(data.at(44), data.end()); //skip the wav header
@@ -189,9 +192,10 @@ void Connection::send_response(std::string data){
     // std::vector<std::vector<char>> chunks = divideIntoChunks(bytes, chunkSize);
 
     // for(auto &chunk: chunks){
-    //     ResponseData r_data{PLAYER_STREAM, chunk.size(), chunk.data()};
-
-    //     if (send(clientSocket, message, strlen(message), 0) < 0) {
+    //     ResponseData r_data{REPLY, chunk.size(), chunk.data()};
+    //     size_t data_len = sizeof(ResponseData) + sizeof(char) * chunk.size();
+    //     std::vector<char> response_data = serialize_response_data(r_data);
+    //     if (send(clientSocket, response_data.data(), data_len, 0) < 0) {
     //                 std::cerr << "Error sending data\n";
     //     }
     // }

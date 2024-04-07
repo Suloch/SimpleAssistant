@@ -29,7 +29,8 @@ typedef struct {
 typedef enum{
     ACK_0, // acknowledgements
     ACK_1, 
-    PLAYER_STREAM
+    PLAYER_STREAM,
+    REPLY
 }ResponseType;
 
 typedef struct {
